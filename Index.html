@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TimeTable Glass</title>
+<style>
+  html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  /* プレビュー専用（?demo=1 の時だけ壁紙もどきを敷く） */
+  body.demo{background:
+    radial-gradient(120% 90% at 15% 10%, #4a6fa5 0%, transparent 55%),
+    radial-gradient(110% 100% at 85% 90%, #7a4a8a 0%, transparent 55%),
+    linear-gradient(160deg,#16233f,#241a33 60%,#0e1622);}
+  #widget{position:fixed;inset:0;box-sizing:border-box;padding:3.5%;border-radius:24px;
+    background:linear-gradient(155deg,rgba(255,255,255,.18),rgba(255,255,255,.07) 55%,rgba(255,255,255,.12));
+    border:1px solid rgba(255,255,255,.28);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.4),inset 0 -1px 0 rgba(0,0,0,.18),0 10px 30px rgba(0,0,0,.28);
+    backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);}
+  #grid{display:grid;width:100%;height:100%;
+    grid-template-columns:.55fr repeat(6,1fr);
+    grid-template-rows:.7fr repeat(6,1fr);
+    gap:clamp(2px,1.4vmin,6px);}
+  .head{display:flex;align-items:center;justify-content:center;border-radius:8px;
+    color:rgba(255,255,255,.7);font-weight:600;font-size:clamp(9px,4.6vmin,22px);
+    transition:all .6s cubic-bezier(.22,1,.36,1);}
+  .pnum{display:flex;align-items:center;justify-content:center;
+    color:rgba(255,255,255,.35);font-size:clamp(8px,4vmin,18px);transition:opacity .6s;}
+  .cell{display:flex;align-items:center;justify-content:center;text-align:center;padding:1px;
+    border-radius:clamp(6px,2.6vmin,12px);word-break:break-all;line-height:1.15;
+    background:rgba(255,255,255,.085);border:1px solid rgba(255,255,255,.07);
+    color:rgba(255,255,255,.92);font-size:clamp(7px,3.9vmin,18px);
+    transition:all .6s cubic-bezier(.22,1,.36,1);}
+  .cell.empty{background:rgba(255,255,255,.028);border-color:transparent;}
+  .cell.now{background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,.24));
+    border-color:rgba(255,255,255,.6);color:#fff;font-weight:700;transform:scale(1.05);z-index:2;
+    box-shadow:0 8px 18px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.75),inset 0 -3px 8px rgba(0,0,0,.16);}
+  .cell.next{border:1px dashed rgba(255,255,255,.55);background:rgba(255,255,255,.12);}
+  .cell.preview{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.18);}
+  .head.preview{background:linear-gradient(180deg,rgba(255,255,255,.4),rgba(255,255,255,.22));
+    color:#fff;transform:scale(1.08);
+    box-shadow:0 4px 10px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.7);}
+  body.preview .cell:not(.preview):not(.empty){opacity:.42}
+  body.preview .head:not(.preview){opacity:.45}
+  body.preview .pnum{opacity:.4}
+</style>
+</head>
+<body>
+<div id="widget"><div id="grid"></div></div>
+<script>
+/* ══ ここだけ編集すればOK ══ */
+const PERIODS=[
+  {n:1,start:"08:50",end:"09:40"},{n:2,start:"09:50",end:"10:40"},
+  {n:3,start:"10:50",end:"11:40"},{n:4,start:"11:50",end:"12:40"},
+  {n:5,start:"13:20",end:"14:10"},{n:6,start:"14:20",end:"15:10"}];
+const WEEK={ // 1=月 … 6=土 / null=なし
+  1:["政治経済","古典探究","仏教","世界史","入試英語","入試英語"],
+  2:["政治経済","数学B","物理基礎","体育","論理表現","コミュ英"],
+  3:["LHR","古典探究","世界史","コミュ英","政経演習","政経演習"],
+  4:["数学B","数学B","政治経済","政治経済","コミュ英","コミュ英"],
+  5:["文学国語","文学国語","物理基礎","古典探究","論理表現","体育"],
+  6:["文学国語","論理表現","世界史","世界史",null,null]};
+const OVERRIDES=[ // 例: {date:"2026-02-03",period:3,subject:null}＝休講
+];                //     {date:"2026-02-04",period:5,subject:"自習"}＝変更
+/* ══════════════════════ */
+const DOW=["月","火","水","木","金","土"];
+const M=s=>{const[a,b]=s.split(":").map(Number);return a*60+b};
+if(new URLSearchParams(location.search).has("demo"))document.body.classList.add("demo");
+const grid=document.getElementById("grid");
+grid.innerHTML="<div></div>"+DOW.map((d,i)=>`<div class="head" id="head-${i+1}">${d}</div>`).join("")
+  +PERIODS.map((p,r)=>`<div class="pnum">${p.n}</div>`+DOW.map((_,c)=>
+    `<div class="cell" id="c-${c+1}-${r+1}"></div>`).join("")).join("");
+const subjectAt=(dow,p)=>{const d=new Date();const ds=
+  `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const ov=OVERRIDES.find(o=>o.date===ds&&o.period===p);
+  return ov?ov.subject:(WEEK[dow]||[])[p-1]||null;};
+const dayBounds=dow=>{const idx=PERIODS.map((_,i)=>i).filter(i=>subjectAt(dow,i+1));
+  return idx.length?[M(PERIODS[idx[0]].start),M(PERIODS[idx[idx.length-1]].end)]:null;};
+const nextSchoolDay=d=>d%6+1; // 土(6)→月(1)
+function tick(){
+  const now=new Date(),dow=now.getDay(),mins=now.getHours()*60+now.getMinutes();
+  document.body.classList.remove("preview");
+  document.querySelectorAll(".head").forEach(h=>h.classList.remove("preview"));
+  for(let d=1;d<=6;d++)for(let p=1;p<=6;p++){
+    const el=document.getElementById(`c-${d}-${p}`);
+    const s=subjectAt(d,p);
+    el.textContent=s||"";
+    el.classList.remove("now","next","preview");
+    el.classList.toggle("empty",!s);
+  }
+  const set=(d,p,cls)=>{const e=document.getElementById(`c-${d}-${p}`);if(e)e.classList.add(cls);};
+  const preview=t=>{document.body.classList.add("preview");
+    document.getElementById(`head-${t}`).classList.add("preview");
+    PERIODS.forEach((_,i)=>{if(subjectAt(t,i+1))set(t,i+1,"preview");});};
+  if(dow>=1&&dow<=6){
+    const b=dayBounds(dow);
+    if(b&&mins>=b[0]&&mins<b[1]){
+      PERIODS.forEach((p,i)=>{const s=M(p.start),e=M(p.end);
+        if(mins>=s&&mins<e&&subjectAt(dow,i+1))set(dow,i+1,"now");});
+      const nx=PERIODS.findIndex((p,i)=>M(p.start)>mins&&subjectAt(dow,i+1));
+      if(nx>=0)set(dow,nx+1,"next");
+      return;}
+    if(b&&mins<b[0])return preview(dow);
+  }
+  preview(dow>=1&&dow<=6?nextSchoolDay(dow):1);
+}
+tick();setInterval(tick,30000);
+</script>
+</body>
+</html>
